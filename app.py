@@ -44,7 +44,7 @@ POSITIONS = {
 STATE = { 'running': False, 'paused': False, 'current_photo': 0, 'total': 0, 'current_level': 1 }
 
 log = logging.getLogger('werkzeug'); log.setLevel(logging.ERROR)
-app = Flask(__name__)
+app = Flask(__name__, template_folder='.')
 socketio = SocketIO(app, cors_allowed_origins="*", max_http_buffer_size=10000000, async_mode='threading')
 
 def save_data():
@@ -409,4 +409,5 @@ if __name__ == '__main__':
     except: ip = "127.0.0.1"
     s.close()
     print(f"BAĞLANTI ADRESİ: https://{ip}:5000")
+
     socketio.run(app, host='0.0.0.0', port=5000, ssl_context='adhoc', debug=False)
