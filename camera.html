@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mentech Cam</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; }
+        video { width: 100vw; height: 100vh; object-fit: cover; }
+        #overlay { position: absolute; border: 2px dashed rgba(255,0,0,0.5); pointer-events: none; display: none; }
+        #info { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.6); padding: 5px; font-family: sans-serif; }
+    </style>
+</head>
+<body>
+    <video id="videoElement" autoplay playsinline muted></video>
+    <div id="overlay"></div>
+    <div id="info">BAĞLANIYOR...</div>
+    <canvas id="canvasElement" style="display:none;"></canvas>
+
+    <script>
+        const socket = io();
+        const video = document.getElementById('videoElement');
+        const canvas = document.getElementById('canvasElement');
+        const overlay = document.getElementById('overlay');
+        const info = document.getElementById('info');
+        const previewCanvas = document.createElement('canvas');
+
+        // Canlı Yayın (Saniyede 5 kare)
+        setInterval(() => {
+            if (video.readyState === 4) {
+                previewCanvas.width = 480; 
+                previewCanvas.height = (video.videoHeight / video.videoWidth) * 480;
+                previewCanvas.getContext('2d').drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
+                socket.emit('yayin_karesi', previewCanvas.toDataURL('image/jpeg', 0.5));
+            }
+        }, 200);
+
+        // Yüksek Kalite Foto Çekimi
+        socket.on('foto_cek', () => {
+            canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            // Flaş Efekti
+            document.body.style.opacity = 0.2; setTimeout(() => document.body.style.opacity = 1, 100);
+
+            fetch('/yukle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ resim: canvas.toDataURL('image/jpeg', 0.95) })
+            });
+        });
+
+        socket.on('telefon_kirpma_goster', (d) => {
+            overlay.style.display = 'block';
+            overlay.style.left = (d.x*100)+'%'; overlay.style.top = (d.y*100)+'%';
+            overlay.style.width = (d.w*100)+'%'; overlay.style.height = (d.h*100)+'%';
+        });
+
+        socket.on('durum_guncelle', (d) => {
+            info.innerText = d.running ? `KAYIT: ${d.index}/${d.total}` : "BEKLİYOR";
+        });
+
+        navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: "environment", width: { ideal: 4096 }, height: { ideal: 2160 } } 
+        }).then(s => video.srcObject = s);
+    </script>
+</body>
+</html>

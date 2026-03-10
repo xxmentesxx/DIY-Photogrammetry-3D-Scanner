@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MENTECH 3D PRO</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --bg: #121212; --panel: #1e1e1e; --border: #333; --primary: #4caf50; --danger: #f44336; --text: #e0e0e0; --accent: #2196f3; --warn: #ff9800; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; height: 100vh; display: flex; overflow: hidden; }
+        
+        #sidebar { width: 360px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 15px; gap: 12px; z-index: 10; box-shadow: 2px 0 10px rgba(0,0,0,0.5); overflow-y: auto; }
+        #preview { flex: 1; position: relative; background: #000; display: flex; justify-content: center; align-items: center; overflow: hidden; user-select: none; }
+        #live-container { position: relative; display: inline-block; }
+        #live-img { display: block; max-width: 100%; max-height: 95vh; border: 1px solid #333; }
+        #crop-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: crosshair; z-index: 5; }
+        #crop-box { position: absolute; border: 2px solid #f44336; background: rgba(244, 67, 54, 0.1); display: none; pointer-events: none; }
+
+        .header { display: flex; justify-content: center; align-items: center; border-bottom: 2px solid var(--border); padding-bottom: 10px; margin-bottom: 5px; }
+        .brand { font-size: 22px; font-weight: bold; color: var(--primary); letter-spacing: 1px; }
+        .settings-btn { background: none; border: none; color: #aaa; font-size: 24px; cursor: pointer; transition: 0.3s; position: absolute; right: 20px; }
+        .settings-btn:hover { color: white; transform: rotate(90deg); }
+
+        .card { background: #252525; border-radius: 8px; padding: 12px; border: 1px solid var(--border); position: relative; }
+        .card-title { margin: 0 0 10px 0; font-size: 13px; color: #888; text-transform: uppercase; font-weight: bold; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        
+        .btn-group { display: flex; gap: 8px; margin-top: 8px; }
+        .btn { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; transition: 0.2s; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .btn-primary { background: #333; border: 1px solid #555; }
+        .btn-start { background: var(--primary); }
+        .btn-start:hover { background: #43a047; }
+        .btn-pause { background: var(--warn); color: black; }
+        .btn-restart { background: var(--danger); }
+        .btn-new { background: var(--accent); width: 100%; margin-top: 8px; }
+        
+        .input-row { display: flex; gap: 10px; margin-bottom: 8px; align-items: center; }
+        .input-group { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+        .input-group label { font-size: 11px; color: #aaa; }
+        .input-group input { background: #1a1a1a; border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; font-size: 14px; text-align: center; }
+        
+        .counter { font-size: 18px; font-weight: bold; color: var(--primary); text-align: center; padding: 5px; background: #111; border-radius: 4px; margin-top: 5px; }
+        .folder-name { text-align: center; font-size: 12px; color: #aaa; margin-top: 5px; font-style: italic; }
+        .hidden { display: none !important; }
+
+        #settings-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; display: none; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
+        .modal-content { background: var(--panel); width: 500px; max-height: 90vh; border-radius: 12px; border: 1px solid var(--border); overflow-y: auto; padding: 20px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 20px; }
+        details { background: #2a2a2a; margin-bottom: 10px; border-radius: 6px; overflow: hidden; border: 1px solid #333; }
+        summary { padding: 15px; cursor: pointer; font-weight: bold; background: #333; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+        .details-content { padding: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        #crop-info { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 5px 15px; border-radius: 20px; color: #fff; font-size: 12px; z-index: 20; display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="header">
+            <div class="brand"><i class="fas fa-cube"></i> MENTECH 3D</div>
+            <button class="settings-btn" onclick="toggleSettings()"><i class="fas fa-cog"></i></button>
+        </div>
+
+        <div class="card" style="border-color: var(--primary);">
+            <div class="card-title" style="color:var(--primary);"><span><i class="fas fa-camera"></i> Otomatik Tarama</span></div>
+            <div class="input-row">
+                <div class="input-group">
+                    <label>Açı Sayısı (Katman)</label>
+                    <input type="number" id="set-z-levels" value="5" oninput="autoSave()">
+                </div>
+                <div class="input-group">
+                    <label>Foto Sayısı (Tur)</label>
+                    <input type="number" id="set-photos" value="50" oninput="autoSave()">
+                </div>
+            </div>
+            
+            <div id="controls-idle">
+                <button class="btn btn-start" style="width:100%" onclick="cmd('start')"><i class="fas fa-play"></i> BAŞLAT</button>
+            </div>
+
+            <div id="controls-active" class="hidden">
+                <div class="btn-group">
+                    <button id="btn-pause-resume" class="btn btn-pause" onclick="cmd('start')"><i class="fas fa-pause"></i> DURAKLAT</button>
+                    <button class="btn btn-restart" onclick="cmd('restart')"><i class="fas fa-redo"></i> YENİDEN BAŞLAT</button>
+                </div>
+                <div style="text-align:center; font-size:11px; margin-top:5px; color:#aaa;">(Yeniden Başlat: SIFIRLAR ve DURUR)</div>
+            </div>
+
+            <button class="btn btn-new" onclick="cmd('new')"><i class="fas fa-folder-plus"></i> Yeni Klasör</button>
+            <div class="folder-name" id="folder-display">Klasör: ...</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><span><i class="fas fa-arrows-alt-v"></i> Asansör (Z)</span></div>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="move('elevator','ccw')"><i class="fas fa-arrow-up"></i> YUKARI</button>
+                <button class="btn btn-primary" onclick="move('elevator','cw')"><i class="fas fa-arrow-down"></i> AŞAĞI</button>
+            </div>
+            <button class="btn btn-primary" style="width:100%; margin-top:8px;" onclick="move('elevator','zero')">0'a GİT</button>
+            <div class="counter">Konum: <span id="pos-elv">0</span> / 5800</div>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><span><i class="fas fa-sync"></i> Döner Tabla</span></div>
+            <div class="btn-group">
+                <button class="btn btn-primary" onclick="move('table','prev')"><i class="fas fa-undo"></i> SOL</button>
+                <button class="btn btn-primary" onclick="move('table','next')"><i class="fas fa-redo"></i> SAĞ</button>
+            </div>
+            <button class="btn btn-primary" style="width:100%; margin-top:8px;" onclick="move('table','zero')">0'a DÖN (Sıfırla)</button>
+            <div class="counter">Foto No: <span id="pos-tab">0</span></div>
+        </div>
+
+        <div class="card">
+            <div class="card-title"><span><i class="fas fa-wifi"></i> Servo</span></div>
+            <div class="input-row">
+                <input type="number" id="servo-live" value="0" placeholder="Açı" style="flex:1;">
+                <button class="btn btn-primary" onclick="sendServoLive()" style="flex:1;">GİT</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title"><span><i class="fas fa-crop"></i> Kamera Alanı</span></div>
+            <button class="btn btn-primary" onclick="clearCrop()">Çerçeveyi Temizle (Tam Ekran)</button>
+        </div>
+    </div>
+
+    <div id="preview">
+        <div id="alert" style="position:absolute; top:20px; background:#4caf50; color:white; padding:10px 20px; border-radius:20px; display:none;">Bildirim</div>
+        <div id="live-container">
+            <img id="live-img" src="" alt="Kamera Bekleniyor...">
+            <div id="crop-overlay"></div>
+            <div id="crop-box"></div>
+        </div>
+        <div id="crop-info">Kırpma Alanı Kaydedildi</div>
+    </div>
+
+    <div id="settings-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0; color:white;">⚙️ Gelişmiş Ayarlar</h3>
+                <button onclick="toggleSettings()" style="background:none; border:none; color:white; font-size:20px; cursor:pointer;">&times;</button>
+            </div>
+            <details open>
+                <summary>Z-Ekseni Ayarları</summary>
+                <div class="details-content">
+                    <div class="input-group">
+                        <label>Manuel Adım Miktarı</label>
+                        <input type="number" id="manual-steps-z" oninput="autoSave()">
+                    </div>
+                    <div class="input-group">
+                        <label>Hız / Gecikme</label>
+                        <input type="number" id="set-elv-delay" oninput="autoSave()">
+                    </div>
+                </div>
+                 <div style="padding:15px; background:#222; margin-top:10px;">
+                    <h4 style="margin:0 0 10px 0; color:#ff9800;">Sıfır Noktası Ayarı</h4>
+                    <p style="font-size:11px; color:#888;">Motoru en alta indirin ve bu butona basın.</p>
+                    <button class="btn btn-start" onclick="setHome('elevator')">Burası SIFIR (Kaydet)</button>
+                 </div>
+            </details>
+            <details>
+                <summary>Tabla Ayarları</summary>
+                <div class="details-content">
+                    <div class="input-group">
+                        <label>Manuel Adım Miktarı</label>
+                        <input type="number" id="manual-steps-t" oninput="autoSave()">
+                    </div>
+                    <div class="input-group">
+                        <label>Hız / Gecikme</label>
+                        <input type="number" id="set-tab-delay" oninput="autoSave()">
+                    </div>
+                    <div class="input-group">
+                        <label>Tam Tur Adım Sayısı</label>
+                        <input type="number" id="set-tab-steps" oninput="autoSave()">
+                    </div>
+                </div>
+            </details>
+             <details>
+                <summary>Servo & Kamera</summary>
+                <div class="details-content">
+                    <button class="btn btn-primary" onclick="calib('start')">Başlangıç Olarak Kaydet</button>
+                    <button class="btn btn-primary" onclick="calib('end')">Bitiş Olarak Kaydet</button>
+                    <div class="input-group full-width">
+                         <label>Çekim Bekleme Süresi</label>
+                         <input type="number" id="set-capture-delay" step="0.1" oninput="autoSave()">
+                    </div>
+                    <div class="input-group full-width">
+                         <label>ESP IP</label>
+                         <input type="text" id="set-ip" oninput="autoSave()">
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let saveTimeout;
+        let currentPos = 0;
+
+        const els = {
+            ip: document.getElementById('set-ip'),
+            zLevels: document.getElementById('set-z-levels'),
+            photos: document.getElementById('set-photos'),
+            elvDelay: document.getElementById('set-elv-delay'),
+            tabDelay: document.getElementById('set-tab-delay'),
+            tabSteps: document.getElementById('set-tab-steps'),
+            capDelay: document.getElementById('set-capture-delay'),
+            manStepZ: document.getElementById('manual-steps-z'),
+            manStepT: document.getElementById('manual-steps-t'),
+            ctrlIdle: document.getElementById('controls-idle'),
+            ctrlActive: document.getElementById('controls-active'),
+            btnPause: document.getElementById('btn-pause-resume')
+        };
+
+        function toggleSettings() {
+            const modal = document.getElementById('settings-modal');
+            modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function autoSave() {
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                const payload = {
+                    esp_ip: els.ip.value,
+                    z_levels: els.zLevels.value,
+                    total_photos: els.photos.value,
+                    capture_delay: els.capDelay.value,
+                    manual_steps_z: els.manStepZ.value,
+                    manual_steps_t: els.manStepT.value,
+                    elevator: { delay: els.elvDelay.value },
+                    table: { delay: els.tabDelay.value, full_steps: els.tabSteps.value }
+                };
+                fetch('/settings', {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify(payload)
+                });
+            }, 500);
+        }
+
+        function updateButtons(state) {
+            if (state.running) {
+                els.ctrlIdle.classList.add('hidden');
+                els.ctrlActive.classList.remove('hidden');
+                if (state.paused) {
+                    els.btnPause.innerHTML = '<i class="fas fa-play"></i> DEVAM ET';
+                    els.btnPause.className = 'btn btn-start';
+                    els.btnPause.onclick = function() { cmd('start'); };
+                } else {
+                    els.btnPause.innerHTML = '<i class="fas fa-pause"></i> DURAKLAT';
+                    els.btnPause.className = 'btn btn-pause';
+                    els.btnPause.onclick = function() { cmd('pause'); };
+                }
+            } else {
+                els.ctrlIdle.classList.remove('hidden');
+                els.ctrlActive.classList.add('hidden');
+            }
+        }
+
+        // CROP
+        const overlay = document.getElementById('crop-overlay');
+        const box = document.getElementById('crop-box');
+        let isDrawing = false, startX, startY;
+
+        overlay.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const rect = overlay.getBoundingClientRect();
+            startX = e.clientX - rect.left; startY = e.clientY - rect.top;
+            box.style.left = startX + 'px'; box.style.top = startY + 'px';
+            box.style.width = '0px'; box.style.height = '0px';
+            box.style.display = 'block';
+        });
+
+        overlay.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const rect = overlay.getBoundingClientRect();
+            let currentX = e.clientX - rect.left, currentY = e.clientY - rect.top;
+            let width = currentX - startX, height = currentY - startY;
+            if(width < 0) { box.style.left = currentX + 'px'; width = Math.abs(width); }
+            if(height < 0) { box.style.top = currentY + 'px'; height = Math.abs(height); }
+            box.style.width = width + 'px'; box.style.height = height + 'px';
+        });
+
+        overlay.addEventListener('mouseup', () => { isDrawing = false; saveCrop(); });
+
+        function saveCrop() {
+            const rect = overlay.getBoundingClientRect();
+            const b = box.getBoundingClientRect();
+            const x = (b.left - rect.left) / rect.width, y = (b.top - rect.top) / rect.height;
+            const w = b.width / rect.width, h = b.height / rect.height;
+            if(w < 0.05 || h < 0.05) return;
+            fetch('/save_crop', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({active: true, x: x, y: y, w: w, h: h})
+            });
+            document.getElementById('crop-info').style.display = 'block';
+            setTimeout(() => document.getElementById('crop-info').style.display = 'none', 2000);
+        }
+
+        function clearCrop() {
+            box.style.display = 'none';
+            fetch('/save_crop', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({active: false, x: 0, y: 0, w: 1, h: 1})
+            });
+        }
+        
+        function drawSavedCrop(c) {
+            if(!c.active) { box.style.display = 'none'; return; }
+            const rect = overlay.getBoundingClientRect();
+            box.style.left = (c.x * rect.width) + 'px';
+            box.style.top = (c.y * rect.height) + 'px';
+            box.style.width = (c.w * rect.width) + 'px';
+            box.style.height = (c.h * rect.height) + 'px';
+            box.style.display = 'block';
+        }
+
+        function move(motor, dir) {
+            let stepsVal = 500;
+            if(motor == 'elevator') stepsVal = els.manStepZ.value;
+            if(motor == 'table') stepsVal = els.manStepT.value;
+            fetch(motor == 'table' ? '/move_table_photo' : '/move_elevator', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({dir: dir, steps: stepsVal})
+            });
+        }
+        function setHome(motor) {
+            fetch('/set_home', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({motor: motor})
+            });
+            if(motor!='servo') alert(motor + " sayacı sıfırlandı!");
+        }
+        function sendServoLive() {
+            fetch('/set_servo_angle', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({val: document.getElementById('servo-live').value})
+            });
+            autoSave();
+        }
+        function calib(type) {
+            fetch('/save_servo_calib', {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({type: type})
+            });
+        }
+        function cmd(type) { socket.emit('komut', {tur: type}); }
+
+        socket.on('monitor_guncelle', data => document.getElementById('live-img').src = data);
+        socket.on('crop_update', c => drawSavedCrop(c));
+        
+        socket.on('pos_update', p => {
+            document.getElementById('pos-elv').innerText = p.elevator;
+            document.getElementById('pos-tab').innerText = p.table_index;
+            document.getElementById('servo-live').value = p.servo;
+            currentPos = p.elevator;
+        });
+        
+        socket.on('durum_guncelle', state => updateButtons(state));
+
+        socket.on('alert', msg => {
+            if(msg.includes("Klasör")) document.getElementById('folder-display').innerText = msg;
+            const al = document.getElementById('alert');
+            al.innerText = msg; al.style.display = 'block';
+            setTimeout(() => al.style.display = 'none', 3000);
+        });
+        socket.on('load_settings', s => {
+            if(document.activeElement.tagName === "INPUT") return;
+            els.ip.value = s.esp_ip;
+            els.zLevels.value = s.z_levels;
+            els.photos.value = s.total_photos;
+            els.capDelay.value = s.capture_delay;
+            els.manStepZ.value = s.manual_steps_z || 500;
+            els.manStepT.value = s.manual_steps_t || 500;
+            if(s.elevator) els.elvDelay.value = s.elevator.delay;
+            if(s.table) {
+                els.tabDelay.value = s.table.delay;
+                els.tabSteps.value = s.table.full_steps;
+            }
+            if(s.crop) drawSavedCrop(s.crop);
+        });
+        window.addEventListener('resize', () => {});
+    </script>
+</body>
+</html>

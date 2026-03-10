@@ -1,0 +1,30 @@
+{
+    "esp_ip": "your_ip",
+    "total_photos": 4,
+    "capture_delay": "1.5",
+    "table": {
+        "delay": "500",
+        "full_steps": 6150
+    },
+    "elevator": {
+        "delay": "2500",
+        "step_size": "5800",
+        "current_pos": 5799,
+        "max_limit": 5800
+    },
+    "servo": {
+        "pos": 30,
+        "start_angle": 0,
+        "end_angle": 45
+    },
+    "z_levels": 4,
+    "crop": {
+        "active": true,
+        "x": 0.04743348562214458,
+        "y": 0.23225620311598386,
+        "w": 0.9072829884439667,
+        "h": 0.4108482400461627
+    },
+    "manual_steps_z": 500,
+    "manual_steps_t": 500
+}
